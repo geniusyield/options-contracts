@@ -64,6 +64,7 @@ instance Eq OptionDatum where
       && (opdCancelCutoff x == opdCancelCutoff y)
       && (opdDeposit x == opdDeposit y)
       && (opdPayment x == opdPayment y)
+      && (opdPrice x == opdPrice y)
       && (opdSellerKey x == opdSellerKey y)
 
 data OptionRedeemer
