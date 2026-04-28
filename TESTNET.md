@@ -43,14 +43,12 @@ bash scripts/option-testnet-demo.sh
 
 ### Recorded transactions
 
-| Operation         | Tx Hash                                                              |
-|-------------------|----------------------------------------------------------------------|
-| createOption      | `e67ee638ce6b8a0c6d35f2949d0ba3ea1be8828be5f183c5e5b76c731b6213ef` |
-| executeOption     | `4335caa411f4fe868591902dc00c33ac3e1269099379d84f4e6b976614e90c67` |
-| retrieveOption    | `05cebbd3ff578074dd5693b57983b606c1d6861cec68aabc9b27bf34c549d74d` |
-| cancelEarly       | `19d18056647d18776832336c2fa37c5e20c014145ff5ad6e82ed483067926f1e` |
-
-Explorer: `https://preprod.cardanoscan.io/transaction/<hash>`
+| Operation      | Tx Hash                                                                | Cardanoscan |
+|----------------|------------------------------------------------------------------------|-------------|
+| createOption   | `e67ee638ce6b8a0c6d35f2949d0ba3ea1be8828be5f183c5e5b76c731b6213ef`   | [view](https://preprod.cardanoscan.io/transaction/e67ee638ce6b8a0c6d35f2949d0ba3ea1be8828be5f183c5e5b76c731b6213ef) |
+| executeOption  | `4335caa411f4fe868591902dc00c33ac3e1269099379d84f4e6b976614e90c67`   | [view](https://preprod.cardanoscan.io/transaction/4335caa411f4fe868591902dc00c33ac3e1269099379d84f4e6b976614e90c67) |
+| retrieveOption | `05cebbd3ff578074dd5693b57983b606c1d6861cec68aabc9b27bf34c549d74d`   | [view](https://preprod.cardanoscan.io/transaction/05cebbd3ff578074dd5693b57983b606c1d6861cec68aabc9b27bf34c549d74d) |
+| cancelEarly    | `19d18056647d18776832336c2fa37c5e20c014145ff5ad6e82ed483067926f1e`   | [view](https://preprod.cardanoscan.io/transaction/19d18056647d18776832336c2fa37c5e20c014145ff5ad6e82ed483067926f1e) |
 
 ---
 
