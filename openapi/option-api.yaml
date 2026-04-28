@@ -1,0 +1,358 @@
+swagger: "2.0"
+info:
+  title: GeniusYield Options API
+  description: |
+    Cardano options contract API exposed by the GeniusYield Tx Server.
+    All endpoints build and return an **unsigned CBOR transaction** (`tTx`)
+    together with the option script address (`tScriptAddress`).
+    The caller signs the CBOR with their CIP-30 wallet and submits it on-chain.
+
+    Base URL: `http://localhost:8082/DEX/option`
+
+    ### Lifecycle
+    ```
+    createOption ──► executeOption (partial, repeatable while Active)
+                └──► cancelEarlyOption (before cancelCutoff)
+                └──► retrieveOption (after end date, seller only)
+    ```
+  version: "1.0.0"
+  contact:
+    name: GeniusYield
+    url: https://www.geniusyield.co
+host: localhost:8082
+basePath: /DEX/option
+schemes:
+  - http
+consumes:
+  - application/json
+produces:
+  - application/json
+
+tags:
+  - name: options
+    description: Options lifecycle operations
+
+paths:
+  /:
+    get:
+      tags: [options]
+      summary: List all live options
+      description: Returns all option UTxOs currently held at the option script address.
+      operationId: listOptions
+      responses:
+        200:
+          description: Array of live option infos
+          schema:
+            type: array
+            items:
+              $ref: "#/definitions/OptionInfo"
+
+  /create:
+    post:
+      tags: [options]
+      summary: Create a new option (seller)
+      description: |
+        Locks `amount` deposit tokens in the option script.
+        Mints `amount` option tokens that identify the position.
+        The seller must call this from their own address (`usedAddrs[0]`).
+      operationId: createOption
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/CreateOptionParams"
+      responses:
+        200:
+          description: Unsigned tx + script address
+          schema:
+            $ref: "#/definitions/TxResponse"
+        400:
+          description: Invalid parameters
+          schema:
+            $ref: "#/definitions/ApiError"
+
+  /execute:
+    post:
+      tags: [options]
+      summary: Exercise option tokens (buyer)
+      description: |
+        Burns `amount` option tokens and pays the seller.
+        Can be called multiple times until all option tokens are burned.
+        Only valid while `now ≥ start AND now ≤ end`.
+      operationId: executeOption
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/ExecuteOptionParams"
+      responses:
+        200:
+          description: Unsigned tx + script address
+          schema:
+            $ref: "#/definitions/TxResponse"
+        400:
+          description: Invalid parameters or option not active
+          schema:
+            $ref: "#/definitions/ApiError"
+
+  /retrieve:
+    post:
+      tags: [options]
+      summary: Retrieve remaining deposit (seller, after expiry)
+      description: |
+        Returns any un-exercised deposit tokens to the seller.
+        Only valid after `end` (option expired) and only callable by the seller's key.
+      operationId: retrieveOption
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/RetrieveOptionParams"
+      responses:
+        200:
+          description: Unsigned tx + script address
+          schema:
+            $ref: "#/definitions/TxResponse"
+        400:
+          description: Option not yet expired or wrong signer
+          schema:
+            $ref: "#/definitions/ApiError"
+
+  /cancel-early:
+    post:
+      tags: [options]
+      summary: Cancel option before cutoff (seller)
+      description: |
+        Returns the full deposit to the seller and burns all remaining option tokens.
+        Only valid while `now < cancelCutoff`.
+        Only the original seller (matching `opdSellerKey`) may call this.
+      operationId: cancelEarlyOption
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: "#/definitions/CancelEarlyOptionParams"
+      responses:
+        200:
+          description: Unsigned tx + script address
+          schema:
+            $ref: "#/definitions/TxResponse"
+        400:
+          description: Past cancel cutoff or wrong signer
+          schema:
+            $ref: "#/definitions/ApiError"
+
+definitions:
+
+  # ── shared wallet fields ──────────────────────────────────────────────────
+
+  WalletFields:
+    description: CIP-30 wallet context required to build a balanced Cardano tx
+    type: object
+    required: [usedAddrs, change]
+    properties:
+      usedAddrs:
+        type: array
+        items:
+          $ref: "#/definitions/GYAddress"
+        description: Used wallet addresses (for UTxO selection)
+      change:
+        $ref: "#/definitions/GYAddress"
+        description: Change address (usually same as usedAddrs[0])
+      collateral:
+        $ref: "#/definitions/CollateralField"
+        description: Optional collateral UTxO reference (5 ADA recommended)
+
+  # ── request bodies ────────────────────────────────────────────────────────
+
+  CreateOptionParams:
+    allOf:
+      - $ref: "#/definitions/WalletFields"
+    required:
+      - usedAddrs
+      - change
+      - start
+      - end
+      - cancelCutoff
+      - depositSymbol
+      - depositToken
+      - paymentSymbol
+      - paymentToken
+      - price
+      - amount
+    properties:
+      start:
+        $ref: "#/definitions/GYTime"
+        description: Option validity start (ISO 8601 UTC)
+        example: "2025-05-01T00:00:00Z"
+      end:
+        $ref: "#/definitions/GYTime"
+        description: Option expiry (ISO 8601 UTC)
+        example: "2025-05-02T00:00:00Z"
+      cancelCutoff:
+        $ref: "#/definitions/GYTime"
+        description: Last moment seller may cancel early (ISO 8601 UTC, must be ≤ end)
+        example: "2025-05-01T12:00:00Z"
+      depositSymbol:
+        type: string
+        description: Policy ID of the deposit asset (empty string for ADA)
+        example: "c6e65ba7878b2f8ea0ad39287d3e2fd256dc5c4160fc19bdf4c4d87e"
+      depositToken:
+        type: string
+        description: Token name hex of the deposit asset (empty string for ADA)
+        example: "7447454e53"
+      paymentSymbol:
+        type: string
+        description: Policy ID of the payment asset (empty string for ADA)
+        example: ""
+      paymentToken:
+        type: string
+        description: Token name hex of the payment asset (empty string for ADA)
+        example: ""
+      price:
+        $ref: "#/definitions/GYRational"
+        description: Price per deposit token in payment-asset units (decimal string)
+        example: "0.5"
+      amount:
+        type: integer
+        minimum: 1
+        description: Number of option tokens to mint (= deposit units to lock)
+        example: 10
+
+  ExecuteOptionParams:
+    allOf:
+      - $ref: "#/definitions/WalletFields"
+    required: [usedAddrs, change, ref, amount]
+    properties:
+      ref:
+        $ref: "#/definitions/GYTxOutRef"
+        description: UTxO reference of the option script output
+        example: "e67ee638ce6b8a0c6d35f2949d0ba3ea1be8828be5f183c5e5b76c731b6213ef#0"
+      amount:
+        type: integer
+        minimum: 1
+        description: Number of option tokens to burn (must be ≤ remaining supply)
+        example: 5
+
+  RetrieveOptionParams:
+    allOf:
+      - $ref: "#/definitions/WalletFields"
+    required: [usedAddrs, change, ref]
+    properties:
+      ref:
+        $ref: "#/definitions/GYTxOutRef"
+        description: UTxO reference of the option script output
+        example: "4335caa411f4fe868591902dc00c33ac3e1269099379d84f4e6b976614e90c67#1"
+
+  CancelEarlyOptionParams:
+    allOf:
+      - $ref: "#/definitions/WalletFields"
+    required: [usedAddrs, change, ref]
+    properties:
+      ref:
+        $ref: "#/definitions/GYTxOutRef"
+        description: UTxO reference of the option script output
+        example: "05cebbd3ff578074dd5693b57983b606c1d6861cec68aabc9b27bf34c549d74d#0"
+
+  # ── response types ────────────────────────────────────────────────────────
+
+  TxResponse:
+    type: object
+    required: [tTx, tScriptAddress]
+    properties:
+      tTx:
+        type: string
+        description: CBOR-hex of the unsigned balanced transaction
+        example: "84a500818258..."
+      tScriptAddress:
+        type: string
+        description: Bech32 address of the option script (for UTxO tracking)
+        example: "addr_test1wz..."
+
+  ApiError:
+    type: object
+    required: [error]
+    properties:
+      error:
+        type: string
+        description: Human-readable error message
+
+  # ── domain types ──────────────────────────────────────────────────────────
+
+  OptionInfo:
+    type: object
+    required:
+      - opiRef
+      - opiSellerKey
+      - opiOptionToken
+      - opiDepositToken
+      - opiPaymentToken
+      - opiDepositAmt
+      - opiPaymentAmt
+      - opiStart
+      - opiEnd
+      - opiCancelCutoff
+      - opiPrice
+    properties:
+      opiRef:
+        $ref: "#/definitions/GYTxOutRef"
+        description: Current UTxO reference of the option output
+      opiSellerKey:
+        type: string
+        description: PubKeyHash of the seller (hex)
+      opiOptionToken:
+        type: string
+        description: AssetId of the option NFT policy ("policyId.tokenNameHex")
+      opiDepositToken:
+        type: string
+        description: AssetId of the deposit asset
+      opiPaymentToken:
+        type: string
+        description: AssetId of the payment asset
+      opiDepositAmt:
+        type: integer
+        description: Remaining deposit units locked in script
+      opiPaymentAmt:
+        type: integer
+        description: Total payment units already received (cumulative)
+      opiStart:
+        $ref: "#/definitions/GYTime"
+      opiEnd:
+        $ref: "#/definitions/GYTime"
+      opiCancelCutoff:
+        $ref: "#/definitions/GYTime"
+      opiPrice:
+        $ref: "#/definitions/GYRational"
+        description: Price per deposit token (serialized as decimal string)
+
+  GYAddress:
+    type: string
+    description: Cardano address (bech32 or CBOR hex)
+    example: "addr_test1qr..."
+
+  GYTxOutRef:
+    type: string
+    pattern: "^[0-9a-f]{64}#[0-9]+$"
+    description: "Cardano UTxO reference: txHash#outputIndex"
+    example: "e67ee638ce6b8a0c6d35f2949d0ba3ea1be8828be5f183c5e5b76c731b6213ef#0"
+
+  GYTime:
+    type: string
+    format: date-time
+    description: ISO 8601 UTC timestamp
+    example: "2025-05-01T00:00:00Z"
+
+  GYRational:
+    type: string
+    description: Rational number as decimal string (e.g. "0.5", "1.25")
+    example: "0.5"
+
+  CollateralField:
+    description: Optional collateral UTxO; omit to let the server select automatically
+    oneOf:
+      - type: "null"
+      - $ref: "#/definitions/GYTxOutRef"
